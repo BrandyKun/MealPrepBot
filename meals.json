@@ -1,0 +1,10 @@
+{
+  "weeklyPlan": {
+    "Monday":    { "lunch": "Sweet chilli chicken rice bowl", "dinner": "Chilli con carne with brown rice", "calories": 1384, "protein": 139 },
+    "Tuesday":   { "lunch": "Sweet chilli chicken rice bowl", "dinner": "Chilli con carne with brown rice", "calories": 1384, "protein": 139 },
+    "Wednesday": { "lunch": "Sweet chilli chicken rice bowl", "dinner": "Chilli con carne with brown rice", "calories": 1384, "protein": 139 },
+    "Thursday":  { "lunch": "Sweet chilli chicken rice bowl", "dinner": "Chilli con carne with brown rice", "calories": 1384, "protein": 139 },
+    "Friday":    { "lunch": "Sweet chilli chicken rice bowl", "dinner": "Chilli con carne with brown rice", "calories": 1384, "protein": 139 }
+  },
+  "dailyTarget": 2098
+}
