@@ -17,7 +17,8 @@ public class MealReminder
     }
 
     [Function("MealReminder")]
-    public async Task Run([TimerTrigger("0 0 8 * * *")] TimerInfo myTimer)
+    // public async Task Run([TimerTrigger("0 */1 * * * *")] TimerInfo myTimer) every minute to tests
+    public async Task Run([TimerTrigger("0 0 8,11,17 * * *")] TimerInfo myTimer)
     {
         // 1. Read today's meals
         var basePath = AppContext.BaseDirectory;
@@ -66,7 +67,8 @@ public class MealReminder
             $"https://graph.facebook.com/v20.0/{phoneId}/messages",
             payload);
 
-        _logger.LogInformation("WhatsApp response: {status}", response.StatusCode);
+        var responseBody = await response.Content.ReadAsStringAsync();
+        _logger.LogInformation("WhatsApp response: {status} - {body}", response.StatusCode, responseBody);
     }
 }
 
