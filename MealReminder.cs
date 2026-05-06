@@ -9,16 +9,17 @@ namespace MealReminderFunction;
 public class MealReminder
 {
     private readonly ILogger _logger;
-    private readonly HttpClient _http = new();
+    private readonly HttpClient _http;
 
     public MealReminder(ILoggerFactory loggerFactory)
     {
         _logger = loggerFactory.CreateLogger<MealReminder>();
+        _http = new HttpClient();
     }
 
     [Function("MealReminder")]
-    // public async Task Run([TimerTrigger("0 */1 * * * *")] TimerInfo myTimer) every minute to tests
-    public async Task Run([TimerTrigger("0 0 8,11,17 * * *")] TimerInfo myTimer)
+    // public async Task Run([TimerTrigger("0 */1 * * * *")] TimerInfo myTimer)
+    public async Task Run([TimerTrigger("0 0 8,12,17 * * *")] TimerInfo myTimer)
     {
         // 1. Read today's meals
         var basePath = AppContext.BaseDirectory;
