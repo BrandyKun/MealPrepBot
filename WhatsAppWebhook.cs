@@ -1,12 +1,14 @@
-using Microsoft.Azure.Functions.Worker;
-using Microsoft.Extensions.Logging;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using System.Net.Http.Headers;
-using System.Text;
-using System.Net.Http.Json;
+using Twilio;
+using Twilio.Rest.Api.V2010.Account;
 
 namespace MealReminderFunction;
 
@@ -22,7 +24,8 @@ public class WhatsAppWebhook
 
     [Function("WhatsAppWebhook")]
     public async Task<IActionResult> Run(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post")] HttpRequest req)
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post")] HttpRequest req
+    )
     {
         // Meta verification handshake - GET request
         if (req.Method == "GET")
@@ -43,35 +46,41 @@ public class WhatsAppWebhook
         }
 
         // Incoming message - POST request
+        // Incoming message - POST request
         var body = await new StreamReader(req.Body).ReadToEndAsync();
-        _logger.LogInformation("Incoming webhook: {body}", body);
+        _logger.LogInformation("Raw body: {body}", body);
+        _logger.LogInformation("Content type: {ct}", req.ContentType);
 
         try
         {
-            var payload = JObject.Parse(body);
+            // Twilio sends form data, not JSON
+            string from = "";
+            string text = "";
 
-            // Extract the message text and sender
-            var entry = payload["entry"]?[0];
-            var changes = entry?["changes"]?[0];
-            var value = changes?["value"];
-            var messages = value?["messages"];
-
-            if (messages == null) return new OkResult();
-
-            var message = messages[0];
-            var from = message?["from"]?.ToString();
-            var text = message?["text"]?["body"]?.ToString();
+            if (req.ContentType != null && req.ContentType.Contains("application/x-www-form-urlencoded"))
+            {
+                // Parse form data
+                var formData = System.Web.HttpUtility.ParseQueryString(body);
+                from = formData["From"]?.Replace("whatsapp:+", "") ?? "";
+                text = formData["Body"] ?? "";
+            }
+            else
+            {
+                // Try Meta JSON format as fallback
+                var payload = JObject.Parse(body);
+                var messages = payload["entry"]?[0]?["changes"]?[0]?["value"]?["messages"];
+                if (messages == null) return new OkResult();
+                from = messages[0]?["from"]?.ToString() ?? "";
+                text = messages[0]?["text"]?["body"]?.ToString() ?? "";
+            }
 
             if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(from))
                 return new OkResult();
 
             _logger.LogInformation("Message from {from}: {text}", from, text);
 
-            // Call Claude API
             var claudeReply = await CallClaude(text);
-
-            // Send reply back via WhatsApp
-            await SendWhatsApp(from, claudeReply);
+            SendWhatsApp(from, claudeReply);
         }
         catch (Exception ex)
         {
@@ -91,7 +100,7 @@ public class WhatsAppWebhook
 
         var payload = new
         {
-            model = "claude-sonnet-4-20250514",
+            model = "claude-sonnet-4-5",
             max_tokens = 300,
             system = """
                 You are a helpful meal and fitness assistant for Brandy.
@@ -100,40 +109,34 @@ public class WhatsAppWebhook
                 Keep replies short and friendly - this is a WhatsApp chat.
                 If asked about calories or meals, be specific and helpful.
                 """,
-            messages = new[]
-            {
-                new { role = "user", content = userMessage }
-            }
+            messages = new[] { new { role = "user", content = userMessage } },
         };
 
         var response = await _http.PostAsJsonAsync(
-            "https://api.anthropic.com/v1/messages", payload);
+            "https://api.anthropic.com/v1/messages",
+            payload
+        );
 
         var responseBody = await response.Content.ReadAsStringAsync();
+        _logger.LogInformation("Claude response: {body}", responseBody);
         var json = JObject.Parse(responseBody);
         return json["content"]?[0]?["text"]?.ToString() ?? "Sorry, I couldn't process that.";
     }
 
-    private async Task SendWhatsApp(string to, string message)
+    private void SendWhatsApp(string to, string message)
     {
-        var token = Environment.GetEnvironmentVariable("WhatsAppToken");
-        var phoneId = Environment.GetEnvironmentVariable("PhoneNumberId");
+        var accountSid = Environment.GetEnvironmentVariable("TwilioAccountSid");
+        var authToken = Environment.GetEnvironmentVariable("TwilioAuthToken");
+        var from = Environment.GetEnvironmentVariable("TwilioWhatsAppFrom");
 
-        _http.DefaultRequestHeaders.Clear();
-        _http.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", token);
+        TwilioClient.Init(accountSid, authToken);
 
-        var payload = new
-        {
-            messaging_product = "whatsapp",
-            to = to,
-            type = "text",
-            text = new { body = message }
-        };
+        MessageResource.Create(
+            body: message,
+            from: new Twilio.Types.PhoneNumber(from),
+            to: new Twilio.Types.PhoneNumber($"whatsapp:+{to}")
+        );
 
-        var response = await _http.PostAsJsonAsync(
-            $"https://graph.facebook.com/v20.0/{phoneId}/messages", payload);
-
-        _logger.LogInformation("WhatsApp reply status: {status}", response.StatusCode);
+        _logger.LogInformation("Twilio message sent to {to}", to);
     }
 }
